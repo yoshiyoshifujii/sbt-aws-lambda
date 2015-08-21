@@ -12,9 +12,11 @@ object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
     val createLambda = taskKey[Unit]("Create a new AWS Lambda function from the current project")
-    val updateLambda = taskKey[Unit]("Package and deploy updated lambda function to AWS")
-    val s3Bucket = settingKey[Option[String]]("S3 bucket where lambda function will be deployed to")
-    val lambdaFunctionName = settingKey[Option[String]]("Name of the lambda function to update")
+    val updateLambda = taskKey[Unit]("Package and deploy the current project to an existing AWS Lambda")
+    val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
+    val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
+    val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
+    val roleName = settingKey[Option[String]]("Name of the IAM role for the Lambda function")
   }
 
   import autoImport._
@@ -23,15 +25,15 @@ object AwsLambdaPlugin extends AutoPlugin {
 
   override lazy val projectSettings = Seq(
     updateLambda := {
-      val bucketId = resolveBucketId(s3Bucket.value)
+      val resolvedBucketId = resolveBucketId(s3Bucket.value)
 
-      val functionName = resolveFunctionName(lambdaFunctionName.value)
+      val resolvedLambdaName = resolveLambdaName(lambdaName.value)
 
       val jar = sbtassembly.AssemblyKeys.assembly.value
 
-      val result = pushJarToS3(jar, bucketId) match {
+      val result = pushJarToS3(jar, resolvedBucketId) match {
         case Success(s3Key) =>
-          doUpdateLambda(functionName, bucketId, s3Key)
+          doUpdateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
         case f: Failure[_] =>
           f
       }
@@ -44,8 +46,14 @@ object AwsLambdaPlugin extends AutoPlugin {
       }
     },
     createLambda := {
-      val functionName = resolveFunctionName(lambdaFunctionName.value)
-      doCreateLambda(functionName) match {
+      val resolvedFunctionName = resolveLambdaName(lambdaName.value)
+      val resolvedHandlerName = resolveHandlerName(handlerName.value)
+      val resolvedRoleName = resolveRoleName(roleName.value)
+      val resolvedBucketId = resolveBucketId(s3Bucket.value)
+
+      val jar = sbtassembly.AssemblyKeys.assembly.value
+
+      doCreateLambda(jar, resolvedFunctionName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
         case s: Success[_] =>
           ()
         case f: Failure[_] =>
@@ -53,7 +61,9 @@ object AwsLambdaPlugin extends AutoPlugin {
       }
     },
     s3Bucket := None,
-    lambdaFunctionName := None
+    lambdaName := None,
+    handlerName := None,
+    roleName := None
   )
 
   private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
@@ -66,12 +76,32 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def resolveFunctionName(sbtSettingValueOpt: Option[String]): FunctionName = {
+  private def resolveLambdaName(sbtSettingValueOpt: Option[String]): LambdaName = {
     sbtSettingValueOpt match {
-      case Some(f) => FunctionName(f)
-      case None => sys.env.get("AWS_LAMBDA_FUNCTION_NAME") match {
-        case Some(envVarFunctionName) => FunctionName(envVarFunctionName)
+      case Some(f) => LambdaName(f)
+      case None => sys.env.get("AWS_LAMBDA_NAME") match {
+        case Some(envVarFunctionName) => LambdaName(envVarFunctionName)
         case None => promptUserForFunctionName()
+      }
+    }
+  }
+
+  private def resolveHandlerName(sbtSettingValueOpt: Option[String]): HandlerName = {
+    sbtSettingValueOpt match {
+      case Some(f) => HandlerName(f)
+      case None => sys.env.get("AWS_LAMBDA_HANDLER_NAME") match {
+        case Some(envVarFunctionName) => HandlerName(envVarFunctionName)
+        case None => promptUserForHandlerName()
+      }
+    }
+  }
+
+  private def resolveRoleName(sbtSettingValueOpt: Option[String]): RoleName = {
+    sbtSettingValueOpt match {
+      case Some(f) => RoleName(f)
+      case None => sys.env.get("AWS_LAMBDA_IAM_ROLE_NAME") match {
+        case Some(envVarFunctionName) => RoleName(envVarFunctionName)
+        case None => promptUserForRoleName()
       }
     }
   }
@@ -93,13 +123,13 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def doUpdateLambda(functionName: FunctionName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
+  private def doUpdateLambda(lambdaName: LambdaName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
     try {
       val client = new AWSLambdaClient(credentials)
 
       val request = {
         val r = new UpdateFunctionCodeRequest()
-        r.setFunctionName(functionName.value)
+        r.setFunctionName(lambdaName.value)
         r.setS3Bucket(bucketId.value)
         r.setS3Key(s3Key.value)
 
@@ -118,20 +148,36 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def doCreateLambda(functionName: FunctionName): Result[CreateFunctionResult] = {
+  private def doCreateLambda(jar: File,
+                             functionName: LambdaName,
+                             handlerName: HandlerName,
+                             roleName: RoleName,
+                             s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(credentials)
 
       val request = {
         val r = new CreateFunctionRequest()
         r.setFunctionName(functionName.value)
+        r.setHandler(handlerName.value)
+        r.setRole(roleName.value)
+        r.setRuntime(com.amazonaws.services.lambda.model.Runtime.Java8)
+
+        val functionCode = {
+          val c = new FunctionCode
+          c.setS3Bucket(s3BucketId.value)
+          c.setS3Key(jar.getName)
+          c
+        }
+
+        r.setCode(functionCode)
 
         r
       }
 
       val createResult = client.createFunction(request)
 
-      println(s"Created lambda ${createResult.getFunctionArn}")
+      println(s"Created Lambda: ${createResult.getFunctionArn}")
       Success(createResult)
     }
     catch {
@@ -141,17 +187,40 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  def promptUserForS3BucketId(): S3BucketId = {
-    SimpleReader.readLine("Enter the AWS S3 bucket where the lambda function will be stored\n") match {
-      case Some(id) => S3BucketId(id)
-      case None => promptUserForS3BucketId()
-    }
+  private def promptUserForS3BucketId(): S3BucketId = {
+    val inputValue = readInput("Enter the AWS S3 bucket where the lambda jar will be stored")
+
+    S3BucketId(inputValue)
   }
 
-  def promptUserForFunctionName(): FunctionName = {
-    SimpleReader.readLine("Enter the name of the lambda function to be executed\n") match {
-      case Some(f) => FunctionName(f)
-      case None => promptUserForFunctionName()
+  private def promptUserForFunctionName(): LambdaName = {
+    val inputValue = readInput("Enter the name of the AWS Lambda")
+
+    LambdaName(inputValue)
+  }
+
+  private def promptUserForHandlerName(): HandlerName = {
+    val inputValue = readInput("Enter the name of the AWS Lambda handler")
+
+    HandlerName(inputValue)
+  }
+
+  private def promptUserForRoleName(): RoleName = {
+    val inputValue = readInput("Enter the name of the IAM role for the Lambda")
+
+    RoleName(inputValue)
+  }
+
+  private def readInput(prompt: String): String = {
+    SimpleReader.readLine(s"$prompt\n") match {
+      case Some(f) =>
+        f
+      case None =>
+        val badInputMessage = "Unable to read input"
+
+        val updatedPrompt = if(prompt.startsWith(badInputMessage)) prompt else s"$badInputMessage\n$prompt"
+
+        readInput(updatedPrompt)
     }
   }
 
@@ -164,4 +233,6 @@ case class Failure[T](message: String, exception: Throwable) extends Result[T]
 
 case class S3BucketId(value: String)
 case class S3Key(value: String)
-case class FunctionName(value: String)
+case class LambdaName(value: String)
+case class HandlerName(value: String)
+case class RoleName(value: String)
