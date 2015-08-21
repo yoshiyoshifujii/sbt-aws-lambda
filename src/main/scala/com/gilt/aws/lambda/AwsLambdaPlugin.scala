@@ -10,9 +10,17 @@ import sbt._
 
 object AwsLambdaPlugin extends AutoPlugin {
 
+  object EnvironmentVariables {
+    val bucketId = "AWS_LAMBDA_BUCKET_ID"
+    val lambdaName = "AWS_LAMBDA_NAME"
+    val handlerName = "AWS_LAMBDA_HANDLER_NAME"
+    val roleName = "AWS_LAMBDA_IAM_ROLE_NAME"
+  }
+
   object autoImport {
     val createLambda = taskKey[Unit]("Create a new AWS Lambda function from the current project")
     val updateLambda = taskKey[Unit]("Package and deploy the current project to an existing AWS Lambda")
+
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
@@ -69,7 +77,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
     sbtSettingValueOpt match {
       case Some(id) => S3BucketId(id)
-      case None => sys.env.get("AWS_LAMBDA_BUCKET_ID") match {
+      case None => sys.env.get(EnvironmentVariables.bucketId) match {
         case Some(envVarId) => S3BucketId(envVarId)
         case None => promptUserForS3BucketId()
       }
@@ -79,7 +87,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def resolveLambdaName(sbtSettingValueOpt: Option[String]): LambdaName = {
     sbtSettingValueOpt match {
       case Some(f) => LambdaName(f)
-      case None => sys.env.get("AWS_LAMBDA_NAME") match {
+      case None => sys.env.get(EnvironmentVariables.lambdaName) match {
         case Some(envVarFunctionName) => LambdaName(envVarFunctionName)
         case None => promptUserForFunctionName()
       }
@@ -89,7 +97,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def resolveHandlerName(sbtSettingValueOpt: Option[String]): HandlerName = {
     sbtSettingValueOpt match {
       case Some(f) => HandlerName(f)
-      case None => sys.env.get("AWS_LAMBDA_HANDLER_NAME") match {
+      case None => sys.env.get(EnvironmentVariables.handlerName) match {
         case Some(envVarFunctionName) => HandlerName(envVarFunctionName)
         case None => promptUserForHandlerName()
       }
@@ -99,7 +107,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def resolveRoleName(sbtSettingValueOpt: Option[String]): RoleName = {
     sbtSettingValueOpt match {
       case Some(f) => RoleName(f)
-      case None => sys.env.get("AWS_LAMBDA_IAM_ROLE_NAME") match {
+      case None => sys.env.get(EnvironmentVariables.roleName) match {
         case Some(envVarFunctionName) => RoleName(envVarFunctionName)
         case None => promptUserForRoleName()
       }
@@ -188,25 +196,25 @@ object AwsLambdaPlugin extends AutoPlugin {
   }
 
   private def promptUserForS3BucketId(): S3BucketId = {
-    val inputValue = readInput("Enter the AWS S3 bucket where the lambda jar will be stored")
+    val inputValue = readInput(s"Enter the AWS S3 bucket where the lambda jar will be stored. (You also could have set the environment variable: ${EnvironmentVariables.bucketId} or the sbt setting: s3Bucket)")
 
     S3BucketId(inputValue)
   }
 
   private def promptUserForFunctionName(): LambdaName = {
-    val inputValue = readInput("Enter the name of the AWS Lambda")
+    val inputValue = readInput(s"Enter the name of the AWS Lambda. (You also could have set the environment variable: ${EnvironmentVariables.lambdaName} or the sbt setting: lambdaName)")
 
     LambdaName(inputValue)
   }
 
   private def promptUserForHandlerName(): HandlerName = {
-    val inputValue = readInput("Enter the name of the AWS Lambda handler")
+    val inputValue = readInput(s"Enter the name of the AWS Lambda handler. (You also could have set the environment variable: ${EnvironmentVariables.handlerName} or the sbt setting: handlerName)")
 
     HandlerName(inputValue)
   }
 
   private def promptUserForRoleName(): RoleName = {
-    val inputValue = readInput("Enter the name of the IAM role for the Lambda")
+    val inputValue = readInput(s"Enter the name of the IAM role for the Lambda. (You also could have set the environment variable: ${EnvironmentVariables.roleName} or the sbt setting: roleName)")
 
     RoleName(inputValue)
   }
