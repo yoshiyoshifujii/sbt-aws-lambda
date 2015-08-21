@@ -1,6 +1,10 @@
 package com.gilt.aws.lambda
 
+import java.net.URLEncoder
+
 import com.amazonaws.auth.profile.ProfileCredentialsProvider
+import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient
+import com.amazonaws.services.identitymanagement.model.{Role, CreateRoleRequest}
 import com.amazonaws.services.lambda.AWSLambdaClient
 import com.amazonaws.services.lambda.model._
 import com.amazonaws.services.s3.AmazonS3Client
@@ -14,7 +18,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     val bucketId = "AWS_LAMBDA_BUCKET_ID"
     val lambdaName = "AWS_LAMBDA_NAME"
     val handlerName = "AWS_LAMBDA_HANDLER_NAME"
-    val roleName = "AWS_LAMBDA_IAM_ROLE_NAME"
+    val roleArn = "AWS_LAMBDA_IAM_ROLE_ARN"
   }
 
   object autoImport {
@@ -24,7 +28,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
-    val roleName = settingKey[Option[String]]("Name of the IAM role for the Lambda function")
+    val roleArn = settingKey[Option[String]]("ARN of the IAM role for the Lambda function")
   }
 
   import autoImport._
@@ -56,7 +60,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     createLambda := {
       val resolvedFunctionName = resolveLambdaName(lambdaName.value)
       val resolvedHandlerName = resolveHandlerName(handlerName.value)
-      val resolvedRoleName = resolveRoleName(roleName.value)
+      val resolvedRoleName = resolveRoleARN(roleArn.value)
       val resolvedBucketId = resolveBucketId(s3Bucket.value)
 
       val jar = sbtassembly.AssemblyKeys.assembly.value
@@ -71,7 +75,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     s3Bucket := None,
     lambdaName := None,
     handlerName := None,
-    roleName := None
+    roleArn := None
   )
 
   private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
@@ -104,12 +108,12 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def resolveRoleName(sbtSettingValueOpt: Option[String]): RoleName = {
+  private def resolveRoleARN(sbtSettingValueOpt: Option[String]): RoleARN = {
     sbtSettingValueOpt match {
-      case Some(f) => RoleName(f)
-      case None => sys.env.get(EnvironmentVariables.roleName) match {
-        case Some(envVarFunctionName) => RoleName(envVarFunctionName)
-        case None => promptUserForRoleName()
+      case Some(f) => RoleARN(f)
+      case None => sys.env.get(EnvironmentVariables.roleArn) match {
+        case Some(envVarFunctionName) => RoleARN(envVarFunctionName)
+        case None => promptUserForRoleARN()
       }
     }
   }
@@ -159,7 +163,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def doCreateLambda(jar: File,
                              functionName: LambdaName,
                              handlerName: HandlerName,
-                             roleName: RoleName,
+                             roleName: RoleARN,
                              s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(credentials)
@@ -213,10 +217,59 @@ object AwsLambdaPlugin extends AutoPlugin {
     HandlerName(inputValue)
   }
 
-  private def promptUserForRoleName(): RoleName = {
-    val inputValue = readInput(s"Enter the name of the IAM role for the Lambda. (You also could have set the environment variable: ${EnvironmentVariables.roleName} or the sbt setting: roleName)")
+  private def promptUserForRoleARN(): RoleARN = {
+    import scala.collection.JavaConverters._
+    val iamClient = new AmazonIdentityManagementClient(credentials)
+    val existingRoles = iamClient.listRoles().getRoles.asScala
 
-    RoleName(inputValue)
+    val basicLambdaRoleName = "lambda_basic_execution"
+
+    existingRoles.find(_.getRoleName == basicLambdaRoleName) match {
+      case Some(basicRole) =>
+        val reuseBasicRole = readInput("IAM role 'lambda_basic_execution' already exists. Reuse this role? (y/n)")
+        
+        if(reuseBasicRole == "y") RoleARN(basicRole.getArn)
+        else readRoleARN()
+      case None =>
+        val createDefaultRole = readInput(s"Default IAM role for AWS Lambda has not been created yet. Create this role now? (y/n)")
+        
+        if(createDefaultRole == "y"){
+          val createRoleRequest = {
+            val policyDocument =
+              """
+                |{
+                |  "Version": "2012-10-17",
+                |  "Statement": [
+                |    {
+                |      "Effect": "Allow",
+                |      "Action": [
+                |        "logs:CreateLogGroup",
+                |        "logs:CreateLogStream",
+                |        "logs:PutLogEvents"
+                |      ],
+                |      "Resource": "arn:aws:logs:*:*:*"
+                |    }
+                |  ]
+                |}
+              """.stripMargin
+
+            val c = new CreateRoleRequest
+            c.setRoleName(basicLambdaRoleName)
+            c.setAssumeRolePolicyDocument(URLEncoder.encode(policyDocument, "UTF-8"))
+            c
+          }
+
+          val result = iamClient.createRole(createRoleRequest)
+          RoleARN(result.getRole.getArn)
+        }else{
+          readRoleARN()
+        }
+    }
+  }
+
+  private def readRoleARN(): RoleARN = {
+    val inputValue = readInput(s"Enter the ARN of the IAM role for the Lambda. (You also could have set the environment variable: ${EnvironmentVariables.roleArn} or the sbt setting: roleArn)")
+    RoleARN(inputValue)
   }
 
   private def readInput(prompt: String): String = {
@@ -243,4 +296,4 @@ case class S3BucketId(value: String)
 case class S3Key(value: String)
 case class LambdaName(value: String)
 case class HandlerName(value: String)
-case class RoleName(value: String)
+case class RoleARN(value: String)
