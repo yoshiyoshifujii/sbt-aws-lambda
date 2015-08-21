@@ -100,11 +100,19 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-
   private def promptUserForS3BucketId(): S3BucketId = {
     val inputValue = readInput(s"Enter the AWS S3 bucket where the lambda jar will be stored. (You also could have set the environment variable: ${EnvironmentVariables.bucketId} or the sbt setting: s3Bucket)")
+    val bucketId = S3BucketId(inputValue)
 
-    S3BucketId(inputValue)
+    AwsS3.getBucket(bucketId) match {
+      case Some(_) =>
+        bucketId
+      case None =>
+        val createBucket = readInput(s"Bucket $inputValue does not exist. Create it now? (y/n)")
+
+        if(createBucket == "y") AwsS3.createBucket(bucketId)
+        else promptUserForS3BucketId()
+    }
   }
 
   private def promptUserForFunctionName(): LambdaName = {
@@ -120,7 +128,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   }
 
   private def promptUserForRoleARN(): RoleARN = {
-        AwsIAM.basicLambdaRole() match {
+    AwsIAM.basicLambdaRole() match {
       case Some(basicRole) =>
         val reuseBasicRole = readInput(s"IAM role '${AwsIAM.BasicLambdaRoleName}' already exists. Reuse this role? (y/n)")
         
