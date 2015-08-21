@@ -32,10 +32,10 @@ private[lambda] object AwsLambda {
   }
 
   def createLambda(jar: File,
-                             functionName: LambdaName,
-                             handlerName: HandlerName,
-                             roleName: RoleARN,
-                             s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
+                   functionName: LambdaName,
+                   handlerName: HandlerName,
+                   roleName: RoleARN,
+                   s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
 

@@ -28,8 +28,14 @@ private[lambda] object AwsS3 {
     client.listBuckets().asScala.find(_.getName == bucketId.value)
   }
 
-  def createBucket(bucketId: S3BucketId): S3BucketId = {
-    client.createBucket(bucketId.value)
-    bucketId
+  def createBucket(bucketId: S3BucketId): Result[S3BucketId] = {
+    try{
+      client.createBucket(bucketId.value)
+      Success(bucketId)
+    } catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex)
+    }
   }
 }

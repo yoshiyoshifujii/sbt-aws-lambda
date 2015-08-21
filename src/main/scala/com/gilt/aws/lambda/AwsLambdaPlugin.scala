@@ -110,7 +110,15 @@ object AwsLambdaPlugin extends AutoPlugin {
       case None =>
         val createBucket = readInput(s"Bucket $inputValue does not exist. Create it now? (y/n)")
 
-        if(createBucket == "y") AwsS3.createBucket(bucketId)
+        if(createBucket == "y") {
+          AwsS3.createBucket(bucketId) match {
+            case Success(createdBucketId) =>
+              createdBucketId
+            case f: Failure =>
+              println(s"Failed to create S3 bucket: ${f.exception.getLocalizedMessage}")
+              promptUserForS3BucketId()
+          }
+        }
         else promptUserForS3BucketId()
     }
   }
@@ -137,8 +145,15 @@ object AwsLambdaPlugin extends AutoPlugin {
       case None =>
         val createDefaultRole = readInput(s"Default IAM role for AWS Lambda has not been created yet. Create this role now? (y/n)")
         
-        if(createDefaultRole == "y") AwsIAM.createBasicLambdaRole()
-        else readRoleARN()
+        if(createDefaultRole == "y") {
+          AwsIAM.createBasicLambdaRole() match {
+            case Success(createdRole) =>
+              createdRole
+            case f: Failure =>
+              println(s"Failed to create role: ${f.exception.getLocalizedMessage}")
+              promptUserForRoleARN()
+          }
+        } else readRoleARN()
     }
   }
 

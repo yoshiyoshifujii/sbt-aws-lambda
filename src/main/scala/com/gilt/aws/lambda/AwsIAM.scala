@@ -1,5 +1,6 @@
 package com.gilt.aws.lambda
 
+import com.amazonaws.{AmazonServiceException, AmazonClientException}
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient
 import com.amazonaws.services.identitymanagement.model.{CreateRoleRequest, Role}
 
@@ -16,7 +17,7 @@ private[lambda] object AwsIAM {
     existingRoles.find(_.getRoleName == BasicLambdaRoleName)
   }
 
-  def createBasicLambdaRole(): RoleARN = {
+  def createBasicLambdaRole(): Result[RoleARN] = {
     val createRoleRequest = {
       val policyDocument = """{"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}"""
       val c = new CreateRoleRequest
@@ -25,7 +26,13 @@ private[lambda] object AwsIAM {
       c
     }
 
-    val result = iamClient.createRole(createRoleRequest)
-    RoleARN(result.getRole.getArn)
+    try {
+      val result = iamClient.createRole(createRoleRequest)
+      Success(RoleARN(result.getRole.getArn))
+    } catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex)
+    }
   }
 }
