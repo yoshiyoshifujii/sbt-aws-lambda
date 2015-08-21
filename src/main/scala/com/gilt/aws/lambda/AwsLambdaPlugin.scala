@@ -40,18 +40,25 @@ object AwsLambdaPlugin extends AutoPlugin {
       }
     },
     createLambda := {
-      val resolvedFunctionName = resolveLambdaName(lambdaName.value)
+      val resolvedLambdaName = resolveLambdaName(lambdaName.value)
       val resolvedHandlerName = resolveHandlerName(handlerName.value)
       val resolvedRoleName = resolveRoleARN(roleArn.value)
       val resolvedBucketId = resolveBucketId(s3Bucket.value)
 
       val jar = sbtassembly.AssemblyKeys.assembly.value
 
-      AwsLambda.createLambda(jar, resolvedFunctionName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
+      val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+        case Success(s3Key) =>
+          AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId)
+        case f: Failure =>
+          f
+      }
+
+      result match {
         case s: Success[_] =>
           ()
         case f: Failure =>
-          sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}")
+          sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}\n${f.exception.getStackTraceString}")
       }
     },
     s3Bucket := None,
