@@ -11,6 +11,7 @@ import sbt._
 object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
+    val createLambda = taskKey[Unit]("Create a new AWS Lambda function from the current project")
     val updateLambda = taskKey[Unit]("Package and deploy updated lambda function to AWS")
     val s3Bucket = settingKey[Option[String]]("S3 bucket where lambda function will be deployed to")
     val lambdaFunctionName = settingKey[Option[String]]("Name of the lambda function to update")
@@ -40,7 +41,15 @@ object AwsLambdaPlugin extends AutoPlugin {
           ()
         case f: Failure[_] =>
           sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
+      }
+    },
+    createLambda := {
+      val functionName = resolveFunctionName(lambdaFunctionName.value)
+      doCreateLambda(functionName) match {
+        case s: Success[_] =>
           ()
+        case f: Failure[_] =>
+          sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}")
       }
     },
     s3Bucket := None,
@@ -101,6 +110,29 @@ object AwsLambdaPlugin extends AutoPlugin {
 
       println(s"Updated lambda ${updateResult.getFunctionArn}")
       Success(updateResult)
+    }
+    catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex.getLocalizedMessage, ex)
+    }
+  }
+
+  private def doCreateLambda(functionName: FunctionName): Result[CreateFunctionResult] = {
+    try {
+      val client = new AWSLambdaClient(credentials)
+
+      val request = {
+        val r = new CreateFunctionRequest()
+        r.setFunctionName(functionName.value)
+
+        r
+      }
+
+      val createResult = client.createFunction(request)
+
+      println(s"Created lambda ${createResult.getFunctionArn}")
+      Success(createResult)
     }
     catch {
       case ex @ (_ : AmazonClientException |
