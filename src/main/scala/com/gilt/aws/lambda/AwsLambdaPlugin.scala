@@ -2,15 +2,16 @@ package com.gilt.aws.lambda
 
 import com.amazonaws.auth.profile.ProfileCredentialsProvider
 import com.amazonaws.services.lambda.AWSLambdaClient
-import com.amazonaws.services.lambda.model.UpdateFunctionCodeRequest
+import com.amazonaws.services.lambda.model._
 import com.amazonaws.services.s3.AmazonS3Client
-import com.amazonaws.services.s3.model.{PutObjectResult, CannedAccessControlList, PutObjectRequest}
+import com.amazonaws.services.s3.model.{CannedAccessControlList, PutObjectRequest}
+import com.amazonaws.{AmazonClientException, AmazonServiceException}
 import sbt._
 
 object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
-    val deployLambda = taskKey[Unit]("Package and deploy lambda function to AWS")
+    val updateLambda = taskKey[Unit]("Package and deploy updated lambda function to AWS")
     val s3Bucket = settingKey[Option[String]]("S3 bucket where lambda function will be deployed to")
     val lambdaFunctionName = settingKey[Option[String]]("Name of the lambda function to update")
   }
@@ -20,69 +21,115 @@ object AwsLambdaPlugin extends AutoPlugin {
   override def requires = sbtassembly.AssemblyPlugin
 
   override lazy val projectSettings = Seq(
-    deployLambda := {
-      val bucketId = s3Bucket.value match {
-        case Some(id) => id
-        case None => sys.env.get("AWS_LAMBDA_BUCKET_ID") match {
-          case Some(envVarId) => envVarId
-          case None => promptUserForS3BucketId()
-        }
-      }
+    updateLambda := {
+      val bucketId = resolveBucketId(s3Bucket.value)
 
-      val functionName = lambdaFunctionName.value match {
-        case Some(f) => f
-        case None => sys.env.get("AWS_LAMBDA_FUNCTION_NAME") match {
-          case Some(envVarFunctionName) => envVarFunctionName
-          case None => promptUserForFunctionName()
-        }
-      }
+      val functionName = resolveFunctionName(lambdaFunctionName.value)
 
       val jar = sbtassembly.AssemblyKeys.assembly.value
 
-      deploy(jar, bucketId)
-      updateLambda(functionName, bucketId, jar.getName)
+      val result = pushJarToS3(jar, bucketId) match {
+        case Success(s3Key) =>
+          doUpdateLambda(functionName, bucketId, s3Key)
+        case f: Failure[_] =>
+          f
+      }
+
+      result match {
+        case s: Success[_] =>
+          ()
+        case f: Failure[_] =>
+          sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
+          ()
+      }
     },
     s3Bucket := None,
     lambdaFunctionName := None
   )
 
-  private def deploy(jar: File, bucketId: String): PutObjectResult = {
-    val amazonS3Client = new AmazonS3Client(credentials)
-
-    val objectRequest = new PutObjectRequest(bucketId, jar.getName, jar)
-
-    objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
-    amazonS3Client.putObject(objectRequest)
-  }
-
-  private def updateLambda(functionName: String, bucketId: String, s3Key: String) = {
-    val client = new AWSLambdaClient(credentials)
-
-    val request = {
-      val r = new UpdateFunctionCodeRequest()
-      r.setFunctionName(functionName)
-      r.setS3Bucket(bucketId)
-      r.setS3Key(s3Key)
-
-      r
+  private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
+    sbtSettingValueOpt match {
+      case Some(id) => S3BucketId(id)
+      case None => sys.env.get("AWS_LAMBDA_BUCKET_ID") match {
+        case Some(envVarId) => S3BucketId(envVarId)
+        case None => promptUserForS3BucketId()
+      }
     }
-
-    client.updateFunctionCode(request)
   }
 
-  def promptUserForS3BucketId(): String = {
+  private def resolveFunctionName(sbtSettingValueOpt: Option[String]): FunctionName = {
+    sbtSettingValueOpt match {
+      case Some(f) => FunctionName(f)
+      case None => sys.env.get("AWS_LAMBDA_FUNCTION_NAME") match {
+        case Some(envVarFunctionName) => FunctionName(envVarFunctionName)
+        case None => promptUserForFunctionName()
+      }
+    }
+  }
+
+  private def pushJarToS3(jar: File, bucketId: S3BucketId): Result[S3Key] = {
+    try{
+      val amazonS3Client = new AmazonS3Client(credentials)
+
+      val objectRequest = new PutObjectRequest(bucketId.value, jar.getName, jar)
+      objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
+
+      amazonS3Client.putObject(objectRequest)
+
+      Success(S3Key(jar.getName))
+    } catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex.getLocalizedMessage, ex)
+    }
+  }
+
+  private def doUpdateLambda(functionName: FunctionName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
+    try {
+      val client = new AWSLambdaClient(credentials)
+
+      val request = {
+        val r = new UpdateFunctionCodeRequest()
+        r.setFunctionName(functionName.value)
+        r.setS3Bucket(bucketId.value)
+        r.setS3Key(s3Key.value)
+
+        r
+      }
+
+      val updateResult = client.updateFunctionCode(request)
+
+      println(s"Updated lambda ${updateResult.getFunctionArn}")
+      Success(updateResult)
+    }
+    catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex.getLocalizedMessage, ex)
+    }
+  }
+
+  def promptUserForS3BucketId(): S3BucketId = {
     SimpleReader.readLine("Enter the AWS S3 bucket where the lambda function will be stored\n") match {
-      case Some(id) => id
+      case Some(id) => S3BucketId(id)
       case None => promptUserForS3BucketId()
     }
   }
 
-  def promptUserForFunctionName(): String = {
+  def promptUserForFunctionName(): FunctionName = {
     SimpleReader.readLine("Enter the name of the lambda function to be executed\n") match {
-      case Some(f) => f
+      case Some(f) => FunctionName(f)
       case None => promptUserForFunctionName()
     }
   }
 
   lazy val credentials = new ProfileCredentialsProvider()
 }
+
+sealed trait Result[T]
+case class Success[T](result: T) extends Result[T]
+case class Failure[T](message: String, exception: Throwable) extends Result[T]
+
+case class S3BucketId(value: String)
+case class S3Key(value: String)
+case class FunctionName(value: String)
