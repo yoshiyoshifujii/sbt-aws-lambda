@@ -1,7 +1,5 @@
 package com.gilt.aws.lambda
 
-import java.net.URLEncoder
-
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient
 import com.amazonaws.services.identitymanagement.model.{CreateRoleRequest, Role}
 
@@ -20,27 +18,10 @@ private[lambda] object AwsIAM {
 
   def createBasicLambdaRole(): RoleARN = {
     val createRoleRequest = {
-      val policyDocument =
-        """
-          |{
-          |  "Version": "2012-10-17",
-          |  "Statement": [
-          |    {
-          |      "Effect": "Allow",
-          |      "Action": [
-          |        "logs:CreateLogGroup",
-          |        "logs:CreateLogStream",
-          |        "logs:PutLogEvents"
-          |      ],
-          |      "Resource": "arn:aws:logs:*:*:*"
-          |    }
-          |  ]
-          |}
-        """.stripMargin
-
+      val policyDocument = """{"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}"""
       val c = new CreateRoleRequest
       c.setRoleName(BasicLambdaRoleName)
-      c.setAssumeRolePolicyDocument(URLEncoder.encode(policyDocument, "UTF-8"))
+      c.setAssumeRolePolicyDocument(policyDocument)
       c
     }
 
