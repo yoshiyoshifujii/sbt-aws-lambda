@@ -19,53 +19,63 @@ object AwsLambdaPlugin extends AutoPlugin {
   override def requires = sbtassembly.AssemblyPlugin
 
   override lazy val projectSettings = Seq(
-    updateLambda := {
-      val resolvedBucketId = resolveBucketId(s3Bucket.value)
-      val resolvedLambdaName = resolveLambdaName(lambdaName.value)
-
-      val jar = sbtassembly.AssemblyKeys.assembly.value
-
-      val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
-        case Success(s3Key) =>
-          AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
-        case f: Failure =>
-          f
-      }
-
-      result match {
-        case s: Success[_] =>
-          ()
-        case f: Failure =>
-          sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
-      }
-    },
-    createLambda := {
-      val resolvedLambdaName = resolveLambdaName(lambdaName.value)
-      val resolvedHandlerName = resolveHandlerName(handlerName.value)
-      val resolvedRoleName = resolveRoleARN(roleArn.value)
-      val resolvedBucketId = resolveBucketId(s3Bucket.value)
-
-      val jar = sbtassembly.AssemblyKeys.assembly.value
-
-      val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
-        case Success(s3Key) =>
-          AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId)
-        case f: Failure =>
-          f
-      }
-
-      result match {
-        case s: Success[_] =>
-          ()
-        case f: Failure =>
-          sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}\n${f.exception.getStackTraceString}")
-      }
-    },
+    updateLambda := doUpdateLambda(
+      jar = sbtassembly.AssemblyKeys.assembly.value,
+      s3Bucket = s3Bucket.value,
+      lambdaName = lambdaName.value
+    ),
+    createLambda := doCreateLambda(
+      jar = sbtassembly.AssemblyKeys.assembly.value,
+      s3Bucket = s3Bucket.value,
+      lambdaName = lambdaName.value,
+      handlerName = handlerName.value,
+      roleArn = roleArn.value
+    ),
     s3Bucket := None,
     lambdaName := None,
     handlerName := None,
     roleArn := None
   )
+
+  private def doUpdateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String]): Unit = {
+    val resolvedBucketId = resolveBucketId(s3Bucket)
+    val resolvedLambdaName = resolveLambdaName(lambdaName)
+
+    val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+      case Success(s3Key) =>
+        AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
+      case f: Failure =>
+        f
+    }
+
+    result match {
+      case s: Success[_] =>
+        ()
+      case f: Failure =>
+        sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
+    }
+  }
+
+  private def doCreateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): Unit = {
+    val resolvedLambdaName = resolveLambdaName(lambdaName)
+    val resolvedHandlerName = resolveHandlerName(handlerName)
+    val resolvedRoleName = resolveRoleARN(roleArn)
+    val resolvedBucketId = resolveBucketId(s3Bucket)
+
+    val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+      case Success(s3Key) =>
+        AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId)
+      case f: Failure =>
+        f
+    }
+
+    result match {
+      case s: Success[_] =>
+        ()
+      case f: Failure =>
+        sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}\n${f.exception.getStackTraceString}")
+    }
+  }
 
   private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
     sbtSettingValueOpt match {
