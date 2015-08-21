@@ -42,14 +42,14 @@ object AwsLambdaPlugin extends AutoPlugin {
       val result = pushJarToS3(jar, resolvedBucketId) match {
         case Success(s3Key) =>
           doUpdateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
-        case f: Failure[_] =>
+        case f: Failure =>
           f
       }
 
       result match {
         case s: Success[_] =>
           ()
-        case f: Failure[_] =>
+        case f: Failure =>
           sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
       }
     },
@@ -64,7 +64,7 @@ object AwsLambdaPlugin extends AutoPlugin {
       doCreateLambda(jar, resolvedFunctionName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
         case s: Success[_] =>
           ()
-        case f: Failure[_] =>
+        case f: Failure =>
           sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}")
       }
     },
@@ -127,7 +127,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     } catch {
       case ex @ (_ : AmazonClientException |
                  _ : AmazonServiceException) =>
-        Failure(ex.getLocalizedMessage, ex)
+        Failure(ex)
     }
   }
 
@@ -152,7 +152,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     catch {
       case ex @ (_ : AmazonClientException |
                  _ : AmazonServiceException) =>
-        Failure(ex.getLocalizedMessage, ex)
+        Failure(ex)
     }
   }
 
@@ -191,7 +191,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     catch {
       case ex @ (_ : AmazonClientException |
                  _ : AmazonServiceException) =>
-        Failure(ex.getLocalizedMessage, ex)
+        Failure(ex)
     }
   }
 
@@ -235,9 +235,9 @@ object AwsLambdaPlugin extends AutoPlugin {
   lazy val credentials = new ProfileCredentialsProvider()
 }
 
-sealed trait Result[T]
+sealed trait Result[+T]
 case class Success[T](result: T) extends Result[T]
-case class Failure[T](message: String, exception: Throwable) extends Result[T]
+case class Failure(exception: Throwable) extends Result[Nothing]
 
 case class S3BucketId(value: String)
 case class S3Key(value: String)
