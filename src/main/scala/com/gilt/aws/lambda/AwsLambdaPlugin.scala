@@ -32,7 +32,7 @@ object AwsLambdaPlugin extends AutoPlugin {
       roleArn = roleArn.value
     ),
     s3Bucket := None,
-    lambdaName := None,
+    lambdaName := Some(sbt.Keys.name.value),
     handlerName := None,
     roleArn := None
   )
