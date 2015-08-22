@@ -1,12 +1,13 @@
 package com.gilt.aws.lambda
 
+import com.amazonaws.services.lambda.model.UpdateFunctionCodeResult
 import sbt._
 
 object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
-    val createLambda = taskKey[Unit]("Create a new AWS Lambda function from the current project")
-    val updateLambda = taskKey[Unit]("Package and deploy the current project to an existing AWS Lambda")
+    val createLambda = taskKey[LambdaARN]("Create a new AWS Lambda function from the current project")
+    val updateLambda = taskKey[LambdaARN]("Package and deploy the current project to an existing AWS Lambda")
 
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
@@ -37,11 +38,11 @@ object AwsLambdaPlugin extends AutoPlugin {
     roleArn := None
   )
 
-  private def doUpdateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String]): Unit = {
+  private def doUpdateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String]): LambdaARN = {
     val resolvedBucketId = resolveBucketId(s3Bucket)
     val resolvedLambdaName = resolveLambdaName(lambdaName)
 
-    val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+    val result: Result[UpdateFunctionCodeResult] = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
         AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
       case f: Failure =>
@@ -49,14 +50,14 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
 
     result match {
-      case s: Success[_] =>
-        ()
-      case f: Failure =>
-        sys.error(s"Error updating lambda: ${f.exception.getLocalizedMessage}")
+      case Success(updateFunctionCodeResult) =>
+        LambdaARN(updateFunctionCodeResult.getFunctionArn)
+      case Failure(exception) =>
+        sys.error(s"Error updating lambda: ${exception.getLocalizedMessage}")
     }
   }
 
-  private def doCreateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): Unit = {
+  private def doCreateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): LambdaARN = {
     val resolvedLambdaName = resolveLambdaName(lambdaName)
     val resolvedHandlerName = resolveHandlerName(handlerName)
     val resolvedRoleName = resolveRoleARN(roleArn)
@@ -70,10 +71,10 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
 
     result match {
-      case s: Success[_] =>
-        ()
-      case f: Failure =>
-        sys.error(s"Failed to create lambda function: ${f.exception.getLocalizedMessage}\n${f.exception.getStackTraceString}")
+      case Success(createFunctionCodeResult) =>
+        LambdaARN(createFunctionCodeResult.getFunctionArn)
+      case Failure(exception) =>
+        sys.error(s"Failed to create lambda function: ${exception.getLocalizedMessage}\n${exception.getStackTraceString}")
     }
   }
 

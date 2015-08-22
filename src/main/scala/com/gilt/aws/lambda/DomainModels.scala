@@ -7,6 +7,7 @@ case class Failure(exception: Throwable) extends Result[Nothing]
 case class S3BucketId(value: String)
 case class S3Key(value: String)
 case class LambdaName(value: String)
+case class LambdaARN(value: String)
 case class HandlerName(value: String)
 case class RoleARN(value: String)
 
