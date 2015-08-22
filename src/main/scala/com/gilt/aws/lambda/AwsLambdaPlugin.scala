@@ -42,18 +42,16 @@ object AwsLambdaPlugin extends AutoPlugin {
     val resolvedBucketId = resolveBucketId(s3Bucket)
     val resolvedLambdaName = resolveLambdaName(lambdaName)
 
-    val result: Result[UpdateFunctionCodeResult] = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+    AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key)
-      case f: Failure =>
-        f
-    }
-
-    result match {
-      case Success(updateFunctionCodeResult) =>
-        LambdaARN(updateFunctionCodeResult.getFunctionArn)
+        AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key) match {
+          case Success(updateFunctionCodeResult) =>
+            LambdaARN(updateFunctionCodeResult.getFunctionArn)
+          case Failure(exception) =>
+            sys.error(s"Error updating lambda: ${exception.getLocalizedMessage}")
+        }
       case Failure(exception) =>
-        sys.error(s"Error updating lambda: ${exception.getLocalizedMessage}")
+        sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
     }
   }
 
@@ -63,18 +61,16 @@ object AwsLambdaPlugin extends AutoPlugin {
     val resolvedRoleName = resolveRoleARN(roleArn)
     val resolvedBucketId = resolveBucketId(s3Bucket)
 
-    val result = AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+    AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId)
-      case f: Failure =>
-        f
-    }
-
-    result match {
-      case Success(createFunctionCodeResult) =>
-        LambdaARN(createFunctionCodeResult.getFunctionArn)
+        AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
+          case Success(createFunctionCodeResult) =>
+            LambdaARN(createFunctionCodeResult.getFunctionArn)
+          case Failure(exception) =>
+            sys.error(s"Failed to create lambda function: ${exception.getLocalizedMessage}\n${exception.getStackTraceString}")
+        }
       case Failure(exception) =>
-        sys.error(s"Failed to create lambda function: ${exception.getLocalizedMessage}\n${exception.getStackTraceString}")
+        sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
     }
   }
 
