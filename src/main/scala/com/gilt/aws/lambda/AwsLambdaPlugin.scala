@@ -48,10 +48,10 @@ object AwsLambdaPlugin extends AutoPlugin {
           case Success(updateFunctionCodeResult) =>
             LambdaARN(updateFunctionCodeResult.getFunctionArn)
           case Failure(exception) =>
-            sys.error(s"Error updating lambda: ${exception.getLocalizedMessage}")
+            sys.error(s"Error updating lambda: ${exception.getStackTraceString}")
         }
       case Failure(exception) =>
-        sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
+        sys.error(s"Error uploading jar to S3 lambda: ${exception.getStackTraceString}")
     }
   }
 
