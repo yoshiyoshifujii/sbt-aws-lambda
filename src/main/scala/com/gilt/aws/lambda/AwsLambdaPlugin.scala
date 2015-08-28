@@ -1,6 +1,5 @@
 package com.gilt.aws.lambda
 
-import com.amazonaws.services.lambda.model.UpdateFunctionCodeResult
 import sbt._
 
 object AwsLambdaPlugin extends AutoPlugin {
