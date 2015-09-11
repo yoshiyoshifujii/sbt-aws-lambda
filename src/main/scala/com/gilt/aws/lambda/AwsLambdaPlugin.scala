@@ -12,6 +12,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
     val roleArn = settingKey[Option[String]]("ARN of the IAM role for the Lambda function")
+    val region = settingKey[Option[String]]("Name of the AWS region to connect to")
   }
 
   import autoImport._
@@ -20,11 +21,13 @@ object AwsLambdaPlugin extends AutoPlugin {
 
   override lazy val projectSettings = Seq(
     updateLambda := doUpdateLambda(
+      region = region.value,
       jar = sbtassembly.AssemblyKeys.assembly.value,
       s3Bucket = s3Bucket.value,
       lambdaName = lambdaName.value
     ),
     createLambda := doCreateLambda(
+      region = region.value,
       jar = sbtassembly.AssemblyKeys.assembly.value,
       s3Bucket = s3Bucket.value,
       lambdaName = lambdaName.value,
@@ -34,16 +37,18 @@ object AwsLambdaPlugin extends AutoPlugin {
     s3Bucket := None,
     lambdaName := Some(sbt.Keys.name.value),
     handlerName := None,
-    roleArn := None
+    roleArn := None,
+    region := Some("us-east-1")
   )
 
-  private def doUpdateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String]): LambdaARN = {
+  private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String]): LambdaARN = {
+    val resolvedRegion = resolveRegion(region)
     val resolvedBucketId = resolveBucketId(s3Bucket)
     val resolvedLambdaName = resolveLambdaName(lambdaName)
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        AwsLambda.updateLambda(resolvedLambdaName, resolvedBucketId, s3Key) match {
+        AwsLambda.updateLambda(resolvedRegion, resolvedLambdaName, resolvedBucketId, s3Key) match {
           case Success(updateFunctionCodeResult) =>
             LambdaARN(updateFunctionCodeResult.getFunctionArn)
           case Failure(exception) =>
@@ -54,7 +59,8 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def doCreateLambda(jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): LambdaARN = {
+  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): LambdaARN = {
+    val resolvedRegion = resolveRegion(region)
     val resolvedLambdaName = resolveLambdaName(lambdaName)
     val resolvedHandlerName = resolveHandlerName(handlerName)
     val resolvedRoleName = resolveRoleARN(roleArn)
@@ -62,7 +68,7 @@ object AwsLambdaPlugin extends AutoPlugin {
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        AwsLambda.createLambda(jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
+        AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
           case Success(createFunctionCodeResult) =>
             LambdaARN(createFunctionCodeResult.getFunctionArn)
           case Failure(exception) =>
@@ -70,6 +76,16 @@ object AwsLambdaPlugin extends AutoPlugin {
         }
       case Failure(exception) =>
         sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
+    }
+  }
+
+  private def resolveRegion(sbtSettingValueOpt: Option[String]): Region = {
+    sbtSettingValueOpt match {
+      case Some(region) => Region(region)
+      case None => sys.env.get(EnvironmentVariables.region) match {
+        case Some(envVarRegion) => Region(envVarRegion)
+        case None => promptUserForRegion()
+      }
     }
   }
 
@@ -111,6 +127,12 @@ object AwsLambdaPlugin extends AutoPlugin {
         case None => promptUserForRoleARN()
       }
     }
+  }
+
+  private def promptUserForRegion(): Region = {
+    val inputValue = readInput(s"Enter the name of the AWS region to connect to. (You also could have set the environment variable: ${EnvironmentVariables.region} or the sbt setting: region)")
+
+    Region(inputValue)
   }
 
   private def promptUserForS3BucketId(): S3BucketId = {
