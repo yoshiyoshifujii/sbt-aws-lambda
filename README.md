@@ -43,3 +43,11 @@ sbt-aws-lambda can be configured using sbt settings, environment variables or by
 | region |  AWS_REGION | The name of the AWS region to connect to. Defaults to `us-east-1` |
 
 
+Publishing new versions of this plugin
+--------------------------------------
+
+This plugin uses [sbt-sonatype](https://github.com/xerial/sbt-sonatype) to publish to Gilt's account on maven central
+
+```
+sbt publishSigned sonatypeRelease
+```
