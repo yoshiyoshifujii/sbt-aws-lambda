@@ -11,5 +11,5 @@ version in ThisBuild := "git describe --tags --always --dirty".!!.trim.replaceFi
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.13.0")
 
 libraryDependencies ++= Seq(
-  "com.amazonaws"  % "aws-java-sdk" % "1.10.11"
+  "com.amazonaws"  % "aws-java-sdk" % "1.10.17"
 )
