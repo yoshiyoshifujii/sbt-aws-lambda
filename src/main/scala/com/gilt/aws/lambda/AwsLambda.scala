@@ -1,14 +1,16 @@
 package com.gilt.aws.lambda
 
+import com.amazonaws.regions.RegionUtils
 import com.amazonaws.{AmazonServiceException, AmazonClientException}
 import com.amazonaws.services.lambda.AWSLambdaClient
 import com.amazonaws.services.lambda.model._
 import sbt._
 
 private[lambda] object AwsLambda {
-  def updateLambda(lambdaName: LambdaName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
+  def updateLambda(region: Region, lambdaName: LambdaName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
+      client.setRegion(RegionUtils.getRegion(region.value))
 
       val request = {
         val r = new UpdateFunctionCodeRequest()
@@ -31,13 +33,15 @@ private[lambda] object AwsLambda {
     }
   }
 
-  def createLambda(jar: File,
+  def createLambda(region: Region,
+                   jar: File,
                    functionName: LambdaName,
                    handlerName: HandlerName,
                    roleName: RoleARN,
                    s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
+      client.setRegion(RegionUtils.getRegion(region.value))
 
       val request = {
         val r = new CreateFunctionRequest()
