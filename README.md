@@ -11,7 +11,7 @@ Installation
 Add the following to your `project/plugins.sbt` file:
 
 ```scala
-addSbtPlugin("com.gilt.sbt" % "sbt-aws-lambda" % "0.1.3")
+addSbtPlugin("com.gilt.sbt" % "sbt-aws-lambda" % "0.2.0")
 ```
 
 Add the `AwsLambdaPlugin` auto-plugin to your build.sbt:
