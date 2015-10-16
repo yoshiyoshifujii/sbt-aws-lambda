@@ -33,5 +33,10 @@ pomExtra := {
       <name>Brendan St John</name>
       <url>https://github.com/stjohnb</url>
     </developer>
+    <developer>
+      <id>fiadliel</id>
+      <name>Gary Coady</name>
+      <url>https://github.com/fiadliel</url>
+    </developer>
   </developers>
 }
