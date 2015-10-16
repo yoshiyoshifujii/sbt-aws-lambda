@@ -13,6 +13,8 @@ object AwsLambdaPlugin extends AutoPlugin {
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
     val roleArn = settingKey[Option[String]]("ARN of the IAM role for the Lambda function")
     val region = settingKey[Option[String]]("Name of the AWS region to connect to")
+    val timeout = settingKey[Option[Int]]("The Lambda timeout length in seconds (1-300)")
+    val memory  = settingKey[Option[Int]]("The amount of memory in MB for the Lambda function (128-1536, multiple of 64)")
   }
 
   import autoImport._
@@ -32,7 +34,9 @@ object AwsLambdaPlugin extends AutoPlugin {
       s3Bucket = s3Bucket.value,
       lambdaName = lambdaName.value,
       handlerName = handlerName.value,
-      roleArn = roleArn.value
+      roleArn = roleArn.value,
+      timeout = timeout.value,
+      memory  = memory.value
     ),
     s3Bucket := None,
     lambdaName := Some(sbt.Keys.name.value),
@@ -59,16 +63,18 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String]): LambdaARN = {
+  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], roleArn: Option[String], timeout: Option[Int], memory: Option[Int]): LambdaARN = {
     val resolvedRegion = resolveRegion(region)
     val resolvedLambdaName = resolveLambdaName(lambdaName)
     val resolvedHandlerName = resolveHandlerName(handlerName)
     val resolvedRoleName = resolveRoleARN(roleArn)
     val resolvedBucketId = resolveBucketId(s3Bucket)
+    val resolvedTimeout = resolveTimeout(timeout)
+    val resolvedMemory = resolveMemory(memory)
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId) match {
+        AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId, resolvedTimeout, resolvedMemory) match {
           case Success(createFunctionCodeResult) =>
             LambdaARN(createFunctionCodeResult.getFunctionArn)
           case Failure(exception) =>
@@ -126,6 +132,20 @@ object AwsLambdaPlugin extends AutoPlugin {
         case Some(envVarFunctionName) => RoleARN(envVarFunctionName)
         case None => promptUserForRoleARN()
       }
+    }
+  }
+
+  private def resolveTimeout(sbtSettingValueOpt: Option[Int]): Option[Timeout] = {
+    sbtSettingValueOpt match {
+      case Some(f) => Some(Timeout(f))
+      case None => sys.env.get(EnvironmentVariables.timeout).map(t => Timeout(t.toInt))
+    }
+  }
+
+  private def resolveMemory(sbtSettingValueOpt: Option[Int]): Option[Memory] = {
+    sbtSettingValueOpt match {
+      case Some(f) => Some(Memory(f))
+      case None => sys.env.get(EnvironmentVariables.memory).map(m => Memory(m.toInt))
     }
   }
 

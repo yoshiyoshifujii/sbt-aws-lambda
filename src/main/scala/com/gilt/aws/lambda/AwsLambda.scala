@@ -38,7 +38,10 @@ private[lambda] object AwsLambda {
                    functionName: LambdaName,
                    handlerName: HandlerName,
                    roleName: RoleARN,
-                   s3BucketId: S3BucketId): Result[CreateFunctionResult] = {
+                   s3BucketId: S3BucketId,
+                   timeout:  Option[Timeout],
+                   memory: Option[Memory]
+                    ): Result[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
       client.setRegion(RegionUtils.getRegion(region.value))
@@ -49,6 +52,8 @@ private[lambda] object AwsLambda {
         r.setHandler(handlerName.value)
         r.setRole(roleName.value)
         r.setRuntime(com.amazonaws.services.lambda.model.Runtime.Java8)
+        if(timeout.isDefined) r.setTimeout(timeout.get.value)
+        if(memory.isDefined)  r.setMemorySize(memory.get.value)
 
         val functionCode = {
           val c = new FunctionCode
