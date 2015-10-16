@@ -2,8 +2,6 @@ name := "sbt-aws-lambda"
 
 organization := "com.gilt.sbt"
 
-scalaVersion := "2.10.4"
-
 sbtPlugin := true
 
 version in ThisBuild := "git describe --tags --always --dirty".!!.trim.replaceFirst("^v", "")
