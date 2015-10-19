@@ -13,8 +13,8 @@ object AwsLambdaPlugin extends AutoPlugin {
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
     val roleArn = settingKey[Option[String]]("ARN of the IAM role for the Lambda function")
     val region = settingKey[Option[String]]("Name of the AWS region to connect to")
-    val timeout = settingKey[Option[Int]]("The Lambda timeout length in seconds (1-300)")
-    val memory  = settingKey[Option[Int]]("The amount of memory in MB for the Lambda function (128-1536, multiple of 64)")
+    val awsLambdaTimeout = settingKey[Option[Int]]("The Lambda timeout length in seconds (1-300)")
+    val awsLambdaMemory = settingKey[Option[Int]]("The amount of memory in MB for the Lambda function (128-1536, multiple of 64)")
   }
 
   import autoImport._
@@ -35,8 +35,8 @@ object AwsLambdaPlugin extends AutoPlugin {
       lambdaName = lambdaName.value,
       handlerName = handlerName.value,
       roleArn = roleArn.value,
-      timeout = timeout.value,
-      memory  = memory.value
+      timeout = awsLambdaTimeout.value,
+      memory = awsLambdaMemory.value
     ),
     s3Bucket := None,
     lambdaName := Some(sbt.Keys.name.value),
