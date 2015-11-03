@@ -5,8 +5,8 @@ import sbt._
 object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
-    val createLambda = taskKey[Seq[LambdaARN]]("Create a new AWS Lambda function from the current project")
-    val updateLambda = taskKey[Seq[LambdaARN]]("Package and deploy the current project to an existing AWS Lambda")
+    val createLambda = taskKey[Map[String, LambdaARN]]("Create a new AWS Lambda function from the current project")
+    val updateLambda = taskKey[Map[String, LambdaARN]]("Package and deploy the current project to an existing AWS Lambda")
 
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
@@ -28,6 +28,7 @@ object AwsLambdaPlugin extends AutoPlugin {
       jar = sbtassembly.AssemblyKeys.assembly.value,
       s3Bucket = s3Bucket.value,
       lambdaName = lambdaName.value,
+      handlerName = handlerName.value,
       lambdaHandlers = lambdaHandlers.value
     ),
     createLambda := doCreateLambda(
@@ -51,29 +52,30 @@ object AwsLambdaPlugin extends AutoPlugin {
     awsLambdaTimeout := None
   )
 
-  private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], lambdaHandlers: Seq[(String, String)]): Seq[LambdaARN] = {
+  private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], 
+      handlerName: Option[String], lambdaHandlers: Seq[(String, String)]): Map[String, LambdaARN] = {
     val resolvedRegion = resolveRegion(region)
     val resolvedBucketId = resolveBucketId(s3Bucket)
-    val resolvedLambdaNames = resolveLambdaNames(lambdaName, lambdaHandlers)
+    val resolvedLambdaHandlers = resolveLambdaHandlers(lambdaName, handlerName, lambdaHandlers)
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
-      case Success(s3Key) => for (resolvedLambdaName <- resolvedLambdaNames) yield {
+      case Success(s3Key) => (for (resolvedLambdaName <- resolvedLambdaHandlers.keys) yield {
         AwsLambda.updateLambda(resolvedRegion, resolvedLambdaName, resolvedBucketId, s3Key) match {
           case Success(updateFunctionCodeResult) =>
-            LambdaARN(updateFunctionCodeResult.getFunctionArn)
+            resolvedLambdaName.value -> LambdaARN(updateFunctionCodeResult.getFunctionArn)
           case Failure(exception) =>
             sys.error(s"Error updating lambda: ${exception.getStackTraceString}")
         }
-      }
+      }).toMap
       case Failure(exception) =>
         sys.error(s"Error uploading jar to S3 lambda: ${exception.getStackTraceString}")
     }
   }
 
-  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], handlerName: Option[String], lambdaHandlers: Seq[(String, String)], roleArn: Option[String], timeout: Option[Int], memory: Option[Int]): Seq[LambdaARN] = {
+  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], 
+      handlerName: Option[String], lambdaHandlers: Seq[(String, String)], roleArn: Option[String], timeout: Option[Int], memory: Option[Int]): Map[String, LambdaARN] = {
     val resolvedRegion = resolveRegion(region)
-    val resolvedLambdaNames = resolveLambdaNames(lambdaName, lambdaHandlers)
-    val resolvedHandlerNames = resolveHandlerNames(handlerName, lambdaHandlers)
+    val resolvedLambdaHandlers = resolveLambdaHandlers(lambdaName, handlerName, lambdaHandlers)
     val resolvedRoleName = resolveRoleARN(roleArn)
     val resolvedBucketId = resolveBucketId(s3Bucket)
     val resolvedTimeout = resolveTimeout(timeout)
@@ -81,14 +83,14 @@ object AwsLambdaPlugin extends AutoPlugin {
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        for ((resolvedLambdaName, resolvedHandlerName) <- resolvedLambdaNames.zip(resolvedHandlerNames)) yield {
+        (for ((resolvedLambdaName, resolvedHandlerName) <- resolvedLambdaHandlers) yield {
           AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId, resolvedTimeout, resolvedMemory) match {
             case Success(createFunctionCodeResult) =>
-              LambdaARN(createFunctionCodeResult.getFunctionArn)
+              resolvedLambdaName.value -> LambdaARN(createFunctionCodeResult.getFunctionArn)
             case Failure(exception) =>
               sys.error(s"Failed to create lambda function: ${exception.getLocalizedMessage}\n${exception.getStackTraceString}")
           }
-        }
+        }).toMap
       case Failure(exception) =>
         sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
     }
@@ -114,27 +116,13 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def resolveLambdaNames(lambdaName: Option[String], lambdaHandlers: Seq[(String, String)]): Seq[LambdaName] = {
-    if (lambdaHandlers.nonEmpty) lambdaHandlers.map { case (l, h) => LambdaName(l) } else
-    lambdaName match {
-      case Some(f) => Seq(LambdaName(f))
-      case None => sys.env.get(EnvironmentVariables.lambdaName) match {
-        case Some(envVarFunctionName) => Seq(LambdaName(envVarFunctionName))
-        case None => Seq(promptUserForFunctionName())
-      }
+  private def resolveLambdaHandlers(lambdaName: Option[String], handlerName: Option[String], 
+      lambdaHandlers: Seq[(String, String)]): Map[LambdaName, HandlerName] =
+    if (lambdaHandlers.nonEmpty) lambdaHandlers.map { case (l, h) => LambdaName(l) -> HandlerName(h)}.toMap else {
+      val l = lambdaName.getOrElse(sys.env.getOrElse(EnvironmentVariables.lambdaName, promptUserForFunctionName()))
+      val h = handlerName.getOrElse(sys.env.getOrElse(EnvironmentVariables.handlerName, promptUserForHandlerName()))
+      Map(LambdaName(l) -> HandlerName(h))
     }
-  }
-
-  private def resolveHandlerNames(handlerName: Option[String], lambdaHandlers: Seq[(String, String)]): Seq[HandlerName] = {
-    if (lambdaHandlers.nonEmpty) lambdaHandlers.map { case(l, h) => HandlerName(h) } else
-    handlerName match {
-      case Some(f) => Seq(HandlerName(f))
-      case None => sys.env.get(EnvironmentVariables.handlerName) match {
-        case Some(envVarFunctionName) => Seq(HandlerName(envVarFunctionName))
-        case None => Seq(promptUserForHandlerName())
-      }
-    }
-  }
 
   private def resolveRoleARN(sbtSettingValueOpt: Option[String]): RoleARN = {
     sbtSettingValueOpt match {
@@ -189,17 +177,11 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def promptUserForFunctionName(): LambdaName = {
-    val inputValue = readInput(s"Enter the name of the AWS Lambda. (You also could have set the environment variable: ${EnvironmentVariables.lambdaName} or the sbt setting: lambdaName)")
+  private def promptUserForFunctionName(): String =
+    readInput(s"Enter the name of the AWS Lambda. (You also could have set the environment variable: ${EnvironmentVariables.lambdaName} or the sbt setting: lambdaName)")
 
-    LambdaName(inputValue)
-  }
-
-  private def promptUserForHandlerName(): HandlerName = {
-    val inputValue = readInput(s"Enter the name of the AWS Lambda handler. (You also could have set the environment variable: ${EnvironmentVariables.handlerName} or the sbt setting: handlerName)")
-
-    HandlerName(inputValue)
-  }
+  private def promptUserForHandlerName(): String =
+    readInput(s"Enter the name of the AWS Lambda handler. (You also could have set the environment variable: ${EnvironmentVariables.handlerName} or the sbt setting: handlerName)")
 
   private def promptUserForRoleARN(): RoleARN = {
     AwsIAM.basicLambdaRole() match {
