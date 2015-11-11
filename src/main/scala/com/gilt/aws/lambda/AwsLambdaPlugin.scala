@@ -83,14 +83,14 @@ object AwsLambdaPlugin extends AutoPlugin {
 
     AwsS3.pushJarToS3(jar, resolvedBucketId) match {
       case Success(s3Key) =>
-        (for ((resolvedLambdaName, resolvedHandlerName) <- resolvedLambdaHandlers) yield {
+        for ((resolvedLambdaName, resolvedHandlerName) <- resolvedLambdaHandlers) yield {
           AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId, resolvedTimeout, resolvedMemory) match {
             case Success(createFunctionCodeResult) =>
               resolvedLambdaName.value -> LambdaARN(createFunctionCodeResult.getFunctionArn)
             case Failure(exception) =>
               sys.error(s"Failed to create lambda function: ${exception.getLocalizedMessage}\n${exception.getStackTraceString}")
           }
-        }).toMap
+        }
       case Failure(exception) =>
         sys.error(s"Error upload jar to S3 lambda: ${exception.getLocalizedMessage}")
     }
@@ -98,7 +98,7 @@ object AwsLambdaPlugin extends AutoPlugin {
 
   private def resolveRegion(sbtSettingValueOpt: Option[String]): Region = {
     sbtSettingValueOpt match {
-      case Some(region) => Region(region)
+      case Some(regionSetting) => Region(regionSetting)
       case None => sys.env.get(EnvironmentVariables.region) match {
         case Some(envVarRegion) => Region(envVarRegion)
         case None => promptUserForRegion()
