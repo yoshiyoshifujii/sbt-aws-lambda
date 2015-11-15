@@ -43,6 +43,38 @@ sbt-aws-lambda can be configured using sbt settings, environment variables or by
 | region |  AWS_REGION | The name of the AWS region to connect to. Defaults to `us-east-1` |
 | awsLambdaTimeout |            | The Lambda timeout in seconds (1-300). Defaults to AWS default. |
 | awsLambdaMemory |             | The amount of memory in MB for the Lambda function (128-1536, multiple of 64). Defaults to AWS default. |
+| lambdaHandlers |              | Sequence of Lambda names to handler functions (for multiple lambda methods per project). Overrides `lambdaName` and `handlerName` if present. | 
+
+An example configuration might look like this:
+
+
+```scala
+retrieveManaged := true
+
+enablePlugins(AwsLambdaPlugin)
+
+lambdaHandlers := Seq(
+  "function1"                 -> "com.gilt.example.Lambda::handleRequest1",
+  "function2"                 -> "com.gilt.example.Lambda::handleRequest2",
+  "function3"                 -> "com.gilt.example.OtherLambda::handleRequest3"
+)
+
+// or, instead of the above, for just one function/handler
+//
+// lambdaName := Some("function1")
+//
+// handlerName := Some("com.gilt.example.Lambda::handleRequest1")
+
+s3Bucket := Some("lambda-jars")
+
+awsLambdaMemory := Some(192)
+
+awsLambdaTimeout := Some(30)
+
+roleArn := Some("arn:aws:iam::123456789000:role/lambda_basic_execution")
+
+```
+(note that you will need to use a real ARN for your role rather than copying this one).
 
 
 Publishing new versions of this plugin
