@@ -2,6 +2,8 @@ package com.gilt.aws.lambda
 
 import sbt._
 
+import scala.util.{Failure, Success}
+
 object AwsLambdaPlugin extends AutoPlugin {
 
   object autoImport {
@@ -168,8 +170,8 @@ object AwsLambdaPlugin extends AutoPlugin {
           AwsS3.createBucket(bucketId) match {
             case Success(createdBucketId) =>
               createdBucketId
-            case f: Failure =>
-              println(s"Failed to create S3 bucket: ${f.exception.getLocalizedMessage}")
+            case Failure(th) =>
+              println(s"Failed to create S3 bucket: ${th.getLocalizedMessage}")
               promptUserForS3BucketId()
           }
         }
@@ -197,8 +199,8 @@ object AwsLambdaPlugin extends AutoPlugin {
           AwsIAM.createBasicLambdaRole() match {
             case Success(createdRole) =>
               createdRole
-            case f: Failure =>
-              println(s"Failed to create role: ${f.exception.getLocalizedMessage}")
+            case Failure(th) =>
+              println(s"Failed to create role: ${th.getLocalizedMessage}")
               promptUserForRoleARN()
           }
         } else readRoleARN()
