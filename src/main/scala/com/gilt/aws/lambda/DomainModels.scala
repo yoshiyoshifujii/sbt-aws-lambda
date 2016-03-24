@@ -1,9 +1,5 @@
 package com.gilt.aws.lambda
 
-sealed trait Result[+T]
-case class Success[T](result: T) extends Result[T]
-case class Failure(exception: Throwable) extends Result[Nothing]
-
 case class Region(value: String)
 case class S3BucketId(value: String)
 case class S3Key(value: String)

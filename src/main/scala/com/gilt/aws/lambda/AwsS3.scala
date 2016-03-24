@@ -5,10 +5,12 @@ import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.{Bucket, CannedAccessControlList, PutObjectRequest}
 import sbt._
 
+import scala.util.{Try, Failure, Success}
+
 private[lambda] object AwsS3 {
   private lazy val client = new AmazonS3Client(AwsCredentials.provider)
 
-  def pushJarToS3(jar: File, bucketId: S3BucketId): Result[S3Key] = {
+  def pushJarToS3(jar: File, bucketId: S3BucketId): Try[S3Key] = {
     try{
       val objectRequest = new PutObjectRequest(bucketId.value, jar.getName, jar)
       objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
@@ -28,7 +30,7 @@ private[lambda] object AwsS3 {
     client.listBuckets().asScala.find(_.getName == bucketId.value)
   }
 
-  def createBucket(bucketId: S3BucketId): Result[S3BucketId] = {
+  def createBucket(bucketId: S3BucketId): Try[S3BucketId] = {
     try{
       client.createBucket(bucketId.value)
       Success(bucketId)

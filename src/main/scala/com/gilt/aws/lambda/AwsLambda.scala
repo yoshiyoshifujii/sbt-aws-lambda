@@ -6,8 +6,10 @@ import com.amazonaws.services.lambda.AWSLambdaClient
 import com.amazonaws.services.lambda.model._
 import sbt._
 
+import scala.util.{Try, Failure, Success}
+
 private[lambda] object AwsLambda {
-  def updateLambda(region: Region, lambdaName: LambdaName, bucketId: S3BucketId, s3Key: S3Key): Result[UpdateFunctionCodeResult] = {
+  def updateLambda(region: Region, lambdaName: LambdaName, bucketId: S3BucketId, s3Key: S3Key): Try[UpdateFunctionCodeResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
       client.setRegion(RegionUtils.getRegion(region.value))
@@ -41,7 +43,7 @@ private[lambda] object AwsLambda {
                    s3BucketId: S3BucketId,
                    timeout:  Option[Timeout],
                    memory: Option[Memory]
-                    ): Result[CreateFunctionResult] = {
+                    ): Try[CreateFunctionResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
       client.setRegion(RegionUtils.getRegion(region.value))

@@ -4,6 +4,8 @@ import com.amazonaws.{AmazonServiceException, AmazonClientException}
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClient
 import com.amazonaws.services.identitymanagement.model.{CreateRoleRequest, Role}
 
+import scala.util.{Failure, Success, Try}
+
 private[lambda] object AwsIAM {
 
   val BasicLambdaRoleName = "lambda_basic_execution"
@@ -17,7 +19,7 @@ private[lambda] object AwsIAM {
     existingRoles.find(_.getRoleName == BasicLambdaRoleName)
   }
 
-  def createBasicLambdaRole(): Result[RoleARN] = {
+  def createBasicLambdaRole(): Try[RoleARN] = {
     val createRoleRequest = {
       val policyDocument = """{"Version":"2012-10-17","Statement":[{"Sid":"","Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}"""
       val c = new CreateRoleRequest
