@@ -28,6 +28,10 @@ Usage
 
 `sbt updateLambda` updates an existing AWS Lambda function with the current project.
 
+`sbt addPermissionLambda` add permission an existing AWS Lambda function with the current project.
+
+`sbt removePermissionLambda` remove permission an existing AWS Lambda function with the current project.
+
 
 Configuration
 -------------
