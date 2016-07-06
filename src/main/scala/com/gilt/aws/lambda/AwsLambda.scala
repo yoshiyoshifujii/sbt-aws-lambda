@@ -9,6 +9,31 @@ import sbt._
 import scala.util.{Try, Failure, Success}
 
 private[lambda] object AwsLambda {
+  def removePermissionLambda(region: Region, lambdaName: LambdaName): Try[String] = {
+    try {
+      val client = new AWSLambdaClient(AwsCredentials.provider)
+      client.setRegion(RegionUtils.getRegion(region.value))
+
+      val request = {
+        val r = new RemovePermissionRequest()
+        r.setFunctionName(lambdaName.value)
+        r.setStatementId("apigateway-invoke-lambda")
+
+        r
+      }
+
+      client.removePermission(request)
+
+      println(s"Remove permission lambda.")
+      Success("success")
+    }
+    catch {
+      case ex @ (_ : AmazonClientException |
+                 _ : AmazonServiceException) =>
+        Failure(ex)
+    }
+  }
+
   def addPermissionLambda(region: Region, lambdaName: LambdaName): Try[AddPermissionResult] = {
     try {
       val client = new AWSLambdaClient(AwsCredentials.provider)
