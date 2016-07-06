@@ -9,6 +9,7 @@ object AwsLambdaPlugin extends AutoPlugin {
   object autoImport {
     val createLambda = taskKey[Map[String, LambdaARN]]("Create a new AWS Lambda function from the current project")
     val updateLambda = taskKey[Map[String, LambdaARN]]("Package and deploy the current project to an existing AWS Lambda")
+    val addPermissionLambda = taskKey[Map[String, LambdaARN]]("Add permission to the current project to an existing AWS Lambda")
 
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
@@ -25,6 +26,10 @@ object AwsLambdaPlugin extends AutoPlugin {
   override def requires = sbtassembly.AssemblyPlugin
 
   override lazy val projectSettings = Seq(
+    addPermissionLambda := doAddPermissionLambda(
+      region = region.value,
+      lambdaName = lambdaName.value
+    ),
     updateLambda := doUpdateLambda(
       region = region.value,
       jar = sbtassembly.AssemblyKeys.assembly.value,
@@ -53,6 +58,22 @@ object AwsLambdaPlugin extends AutoPlugin {
     awsLambdaMemory := None,
     awsLambdaTimeout := None
   )
+
+  private def doAddPermissionLambda(region: Option[String], lambdaName: Option[String]): Map[String, LambdaARN] = {
+    val resolvedRegion = resolveRegion(region)
+
+    (for {
+      l <- lambdaName
+      resolvedLambdaName = LambdaName(l)
+    } yield {
+      AwsLambda.addPermissionLambda(resolvedRegion, resolvedLambdaName) match {
+        case Success(addPermissionResult) =>
+          resolvedLambdaName.value -> LambdaARN(addPermissionResult.getStatement)
+        case Failure(exception) =>
+          sys.error(s"Error add permission lambda: ${exception.getMessage} ${exception.getStackTraceString}")
+      }
+    }).toMap
+  }
 
   private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], 
       handlerName: Option[String], lambdaHandlers: Seq[(String, String)]): Map[String, LambdaARN] = {

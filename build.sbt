@@ -16,4 +16,4 @@ libraryDependencies ++= Seq(
   "com.amazonaws"  % "aws-java-sdk-s3"     % awsSdkVersion
 )
 
-javaVersionPrefix in javaVersionCheck := Some("1.7")
+javaVersionPrefix in javaVersionCheck := Some("1.8")
