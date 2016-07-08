@@ -98,57 +98,30 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def resolveRegion(sbtSettingValueOpt: Option[String]): Region = {
-    sbtSettingValueOpt match {
-      case Some(regionSetting) => Region(regionSetting)
-      case None => sys.env.get(EnvironmentVariables.region) match {
-        case Some(envVarRegion) => Region(envVarRegion)
-        case None => promptUserForRegion()
-      }
-    }
-  }
+  private def resolveRegion(sbtSettingValueOpt: Option[String]): Region =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.region) map Region getOrElse promptUserForRegion()
 
-  private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId = {
-    sbtSettingValueOpt match {
-      case Some(id) => S3BucketId(id)
-      case None => sys.env.get(EnvironmentVariables.bucketId) match {
-        case Some(envVarId) => S3BucketId(envVarId)
-        case None => promptUserForS3BucketId()
-      }
-    }
-  }
+  private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.bucketId) map S3BucketId getOrElse promptUserForS3BucketId()
 
   private def resolveLambdaHandlers(lambdaName: Option[String], handlerName: Option[String], 
-      lambdaHandlers: Seq[(String, String)]): Map[LambdaName, HandlerName] =
-    if (lambdaHandlers.nonEmpty) lambdaHandlers.map { case (l, h) => LambdaName(l) -> HandlerName(h)}.toMap else {
+      lambdaHandlers: Seq[(String, String)]): Map[LambdaName, HandlerName] = {
+    val lhs = if (lambdaHandlers.nonEmpty) lambdaHandlers.iterator else {
       val l = lambdaName.getOrElse(sys.env.getOrElse(EnvironmentVariables.lambdaName, promptUserForFunctionName()))
       val h = handlerName.getOrElse(sys.env.getOrElse(EnvironmentVariables.handlerName, promptUserForHandlerName()))
-      Map(LambdaName(l) -> HandlerName(h))
+      Iterator(l -> h)
     }
-
-  private def resolveRoleARN(sbtSettingValueOpt: Option[String]): RoleARN = {
-    sbtSettingValueOpt match {
-      case Some(f) => RoleARN(f)
-      case None => sys.env.get(EnvironmentVariables.roleArn) match {
-        case Some(envVarFunctionName) => RoleARN(envVarFunctionName)
-        case None => promptUserForRoleARN()
-      }
-    }
+    lhs.map { case (l, h) => LambdaName(l) -> HandlerName(h) }.toMap
   }
 
-  private def resolveTimeout(sbtSettingValueOpt: Option[Int]): Option[Timeout] = {
-    sbtSettingValueOpt match {
-      case Some(f) => Some(Timeout(f))
-      case None => sys.env.get(EnvironmentVariables.timeout).map(t => Timeout(t.toInt))
-    }
-  }
+  private def resolveRoleARN(sbtSettingValueOpt: Option[String]): RoleARN =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.roleArn) map RoleARN getOrElse promptUserForRoleARN()
 
-  private def resolveMemory(sbtSettingValueOpt: Option[Int]): Option[Memory] = {
-    sbtSettingValueOpt match {
-      case Some(f) => Some(Memory(f))
-      case None => sys.env.get(EnvironmentVariables.memory).map(m => Memory(m.toInt))
-    }
-  }
+  private def resolveTimeout(sbtSettingValueOpt: Option[Int]): Option[Timeout] =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.timeout).map(_.toInt) map Timeout
+
+  private def resolveMemory(sbtSettingValueOpt: Option[Int]): Option[Memory] =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.memory).map(_.toInt) map Memory
 
   private def promptUserForRegion(): Region = {
     val inputValue = readInput(s"Enter the name of the AWS region to connect to. (You also could have set the environment variable: ${EnvironmentVariables.region} or the sbt setting: region)")
@@ -160,22 +133,19 @@ object AwsLambdaPlugin extends AutoPlugin {
     val inputValue = readInput(s"Enter the AWS S3 bucket where the lambda jar will be stored. (You also could have set the environment variable: ${EnvironmentVariables.bucketId} or the sbt setting: s3Bucket)")
     val bucketId = S3BucketId(inputValue)
 
-    AwsS3.getBucket(bucketId) match {
-      case Some(_) =>
-        bucketId
-      case None =>
-        val createBucket = readInput(s"Bucket $inputValue does not exist. Create it now? (y/n)")
+    AwsS3.getBucket(bucketId) map (_ => bucketId) getOrElse {
+      val createBucket = readInput(s"Bucket $inputValue does not exist. Create it now? (y/n)")
 
-        if(createBucket == "y") {
-          AwsS3.createBucket(bucketId) match {
-            case Success(createdBucketId) =>
-              createdBucketId
-            case Failure(th) =>
-              println(s"Failed to create S3 bucket: ${th.getLocalizedMessage}")
-              promptUserForS3BucketId()
-          }
+      if(createBucket == "y") {
+        AwsS3.createBucket(bucketId) match {
+          case Success(createdBucketId) =>
+            createdBucketId
+          case Failure(th) =>
+            println(s"Failed to create S3 bucket: ${th.getLocalizedMessage}")
+            promptUserForS3BucketId()
         }
-        else promptUserForS3BucketId()
+      }
+      else promptUserForS3BucketId()
     }
   }
 
@@ -212,16 +182,12 @@ object AwsLambdaPlugin extends AutoPlugin {
     RoleARN(inputValue)
   }
 
-  private def readInput(prompt: String): String = {
-    SimpleReader.readLine(s"$prompt\n") match {
-      case Some(f) =>
-        f
-      case None =>
-        val badInputMessage = "Unable to read input"
+  private def readInput(prompt: String): String =
+    SimpleReader.readLine(s"$prompt\n") getOrElse {
+      val badInputMessage = "Unable to read input"
 
-        val updatedPrompt = if(prompt.startsWith(badInputMessage)) prompt else s"$badInputMessage\n$prompt"
+      val updatedPrompt = if(prompt.startsWith(badInputMessage)) prompt else s"$badInputMessage\n$prompt"
 
-        readInput(updatedPrompt)
+      readInput(updatedPrompt)
     }
-  }
 }
