@@ -10,14 +10,14 @@ import scala.util.{Try, Failure, Success}
 private[lambda] object AwsS3 {
   private lazy val client = new AmazonS3Client(AwsCredentials.provider)
 
-  def pushJarToS3(jar: File, bucketId: S3BucketId): Try[S3Key] = {
+  def pushJarToS3(jar: File, bucketId: S3BucketId, s3KeyPrefix: String): Try[S3Key] = {
     try{
       val objectRequest = new PutObjectRequest(bucketId.value, jar.getName, jar)
       objectRequest.setCannedAcl(CannedAccessControlList.AuthenticatedRead)
 
       client.putObject(objectRequest)
 
-      Success(S3Key(jar.getName))
+      Success(S3Key(s3KeyPrefix + jar.getName))
     } catch {
       case ex @ (_ : AmazonClientException |
                  _ : AmazonServiceException) =>

@@ -19,6 +19,7 @@ case class Memory(value: Int) {
 object EnvironmentVariables {
   val region = "AWS_REGION"
   val bucketId = "AWS_LAMBDA_BUCKET_ID"
+  val s3KeyPrefix = "AWS_LAMBDA_S3_KEY_PREFIX"
   val lambdaName = "AWS_LAMBDA_NAME"
   val handlerName = "AWS_LAMBDA_HANDLER_NAME"
   val roleArn = "AWS_LAMBDA_IAM_ROLE_ARN"

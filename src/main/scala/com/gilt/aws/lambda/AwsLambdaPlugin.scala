@@ -11,6 +11,7 @@ object AwsLambdaPlugin extends AutoPlugin {
     val updateLambda = taskKey[Map[String, LambdaARN]]("Package and deploy the current project to an existing AWS Lambda")
 
     val s3Bucket = settingKey[Option[String]]("ID of the S3 bucket where the jar will be uploaded")
+    val s3KeyPrefix = settingKey[String]("The prefix to the S3 key where the jar will be uploaded")
     val lambdaName = settingKey[Option[String]]("Name of the AWS Lambda to update")
     val handlerName = settingKey[Option[String]]("Name of the handler to be executed by AWS Lambda")
     val roleArn = settingKey[Option[String]]("ARN of the IAM role for the Lambda function")
@@ -29,6 +30,7 @@ object AwsLambdaPlugin extends AutoPlugin {
       region = region.value,
       jar = sbtassembly.AssemblyKeys.assembly.value,
       s3Bucket = s3Bucket.value,
+      s3KeyPrefix = s3KeyPrefix.?.value,
       lambdaName = lambdaName.value,
       handlerName = handlerName.value,
       lambdaHandlers = lambdaHandlers.value
@@ -37,6 +39,7 @@ object AwsLambdaPlugin extends AutoPlugin {
       region = region.value,
       jar = sbtassembly.AssemblyKeys.assembly.value,
       s3Bucket = s3Bucket.value,
+      s3KeyPrefix = s3KeyPrefix.?.value,
       lambdaName = lambdaName.value,
       handlerName = handlerName.value,
       lambdaHandlers = lambdaHandlers.value,
@@ -54,13 +57,14 @@ object AwsLambdaPlugin extends AutoPlugin {
     awsLambdaTimeout := None
   )
 
-  private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], 
+  private def doUpdateLambda(region: Option[String], jar: File, s3Bucket: Option[String], s3KeyPrefix: Option[String], lambdaName: Option[String], 
       handlerName: Option[String], lambdaHandlers: Seq[(String, String)]): Map[String, LambdaARN] = {
     val resolvedRegion = resolveRegion(region)
     val resolvedBucketId = resolveBucketId(s3Bucket)
+    val resolvedS3KeyPrefix = resolveS3KeyPrefix(s3KeyPrefix)
     val resolvedLambdaHandlers = resolveLambdaHandlers(lambdaName, handlerName, lambdaHandlers)
 
-    AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+    AwsS3.pushJarToS3(jar, resolvedBucketId, resolvedS3KeyPrefix) match {
       case Success(s3Key) => (for (resolvedLambdaName <- resolvedLambdaHandlers.keys) yield {
         AwsLambda.updateLambda(resolvedRegion, resolvedLambdaName, resolvedBucketId, s3Key) match {
           case Success(updateFunctionCodeResult) =>
@@ -74,16 +78,17 @@ object AwsLambdaPlugin extends AutoPlugin {
     }
   }
 
-  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], lambdaName: Option[String], 
+  private def doCreateLambda(region: Option[String], jar: File, s3Bucket: Option[String], s3KeyPrefix: Option[String], lambdaName: Option[String], 
       handlerName: Option[String], lambdaHandlers: Seq[(String, String)], roleArn: Option[String], timeout: Option[Int], memory: Option[Int]): Map[String, LambdaARN] = {
     val resolvedRegion = resolveRegion(region)
     val resolvedLambdaHandlers = resolveLambdaHandlers(lambdaName, handlerName, lambdaHandlers)
     val resolvedRoleName = resolveRoleARN(roleArn)
     val resolvedBucketId = resolveBucketId(s3Bucket)
+    val resolvedS3KeyPrefix = resolveS3KeyPrefix(s3KeyPrefix)
     val resolvedTimeout = resolveTimeout(timeout)
     val resolvedMemory = resolveMemory(memory)
 
-    AwsS3.pushJarToS3(jar, resolvedBucketId) match {
+    AwsS3.pushJarToS3(jar, resolvedBucketId, resolvedS3KeyPrefix) match {
       case Success(s3Key) =>
         for ((resolvedLambdaName, resolvedHandlerName) <- resolvedLambdaHandlers) yield {
           AwsLambda.createLambda(resolvedRegion, jar, resolvedLambdaName, resolvedHandlerName, resolvedRoleName, resolvedBucketId, resolvedTimeout, resolvedMemory) match {
@@ -104,7 +109,10 @@ object AwsLambdaPlugin extends AutoPlugin {
   private def resolveBucketId(sbtSettingValueOpt: Option[String]): S3BucketId =
     sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.bucketId) map S3BucketId getOrElse promptUserForS3BucketId()
 
-  private def resolveLambdaHandlers(lambdaName: Option[String], handlerName: Option[String], 
+  private def resolveS3KeyPrefix(sbtSettingValueOpt: Option[String]): String =
+    sbtSettingValueOpt orElse sys.env.get(EnvironmentVariables.s3KeyPrefix) getOrElse ""
+
+  private def resolveLambdaHandlers(lambdaName: Option[String], handlerName: Option[String],
       lambdaHandlers: Seq[(String, String)]): Map[LambdaName, HandlerName] = {
     val lhs = if (lambdaHandlers.nonEmpty) lambdaHandlers.iterator else {
       val l = lambdaName.getOrElse(sys.env.getOrElse(EnvironmentVariables.lambdaName, promptUserForFunctionName()))
